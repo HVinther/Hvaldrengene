@@ -1,5 +1,5 @@
 library(dplyr)
-setwd("C:/Users/espri/OneDrive/Dokumenter/Universitet-mat/Bachelor/Bachelor R")
+
 
 whales<-read.csv("SwimSpeedFitleredWhaleData.txt",header=TRUE)
 
