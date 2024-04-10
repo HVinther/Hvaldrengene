@@ -1,5 +1,6 @@
 library(reticulate)
 
+## Call cmw_init to set up the conda enviroment and install the Copernicus Marine Toolbox inside
 cmw_init<-function(){
   if(! "copernicus_data_retrieval" %in% reticulate::conda_list()$name){
     reticulate::conda_create(envname = "copernicus_data_retrieval",
@@ -8,6 +9,9 @@ cmw_init<-function(){
   message("Note:You'll have to login to retrieve data from Copernicus Marine.")
 }
 
+## To retrieve data from the Copernicus Marine Service you'll need to provide a log-in
+## The account information is saved in a local file using the methods of the toolbox
+## Thus a login is required only once
 cmw_login<-function(username,password){
   clist <- reticulate::conda_list()
   if(! "copernicus_data_retrieval" %in% reticulate::conda_list()$name){
@@ -18,6 +22,8 @@ cmw_login<-function(username,password){
   system2(path,args = "login", input = c(username,password,"y"))
 }
 
+## Fetch data from the Copernicus Marine Service. By default written to a file with
+## a randomly generated name inside the current working directory.
 cmw_subset<-function(
     serviceId,
     productId,
@@ -75,6 +81,9 @@ cmw_subset<-function(
   
 }
 
+## For advanced use, commands can be issued directly to the Toolbox cli.
+## Commands should be in a character vector of length one, and be in
+## shell/cli style.
 cmw <- function(...){
   clist <- reticulate::conda_list()
   if(! "copernicus_data_retrieval" %in% reticulate::conda_list()$name){
@@ -85,8 +94,7 @@ cmw <- function(...){
   system(paste(path,...))
 }
 
-cmw()
-
+## Currently just removes the conda enviroment. 
 cmw_deinit<-function(){
   reticulate::conda_remove("copernicus_data_retrieval")
 }
