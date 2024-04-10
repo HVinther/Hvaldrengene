@@ -56,10 +56,15 @@ cmw_subset<-function(
   command <- paste (path," subset -i", productId,                    
                     "-x", lon[1], "-X", lon[2],                  
                     "-y", lat[1], "-Y", lat[2],
-                    "-t", dates[1], "-T", dates[2],
-                    "-z", depth[1], "-Z", depth[2],                    
-                    "--variable", variable, "-o", out_dir, "-f", tmp_name, 
-                    "--force-download")
+                    "-t", dates[1], "-T", dates[2])
+  
+  if(!missing(depth)){
+    command<-paste(command,"-z", depth[1], "-Z", depth[2])
+  }
+
+  command <- paste(command ,        
+                   "--variable", variable, "-o", out_dir, "-f", tmp_name, 
+                   "--force-download")
   
   cat("======== Download starting ========\n")
   
