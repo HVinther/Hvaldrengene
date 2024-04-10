@@ -51,7 +51,7 @@ cmw_subset<-function(
     out_dir <- substr(out_dir,dir_len -1,dir_len -1)
   }
   
-  tmp_name <- paste(c("cmw_tmp_",sample(c(letters,1:10),20,TRUE),".nc"),collapse ="")
+  tmp_name <- substr(tempfile(pattern = "tmp",fileext = ".nc",tmpdir = ""),2,20L)
   
   command <- paste (path," subset -i", productId,                    
                     "-x", lon[1], "-X", lon[2],                  
