@@ -22,10 +22,12 @@ cms_login<-function(username,password){
 cms_subset<-function(
     serviceId,
     productId,
-    variabe,
+    variable,
+    dates,
     lon = c(-110,-45),
     lat = c(55,80),
     depth,
+    out_name = tempfile(tmpdir = "",fileext = ".nc"),
     out_dir = getwd())
 {
   clist <- reticulate::conda_list()
@@ -39,21 +41,31 @@ cms_subset<-function(
   }
   path<-clist$python[clist$name == "copernicus_data_retrieval"]
   path<-stringr::str_replace(path,".python","/copernicusmarine")
-  system(path)
+  
+  if(substr(out_name,1,1) == "/"){
+    out_name <- substr(out_name,2,nchar(out_name))
+  }
+  
+  dir_len <- nchar(out_dir)
+  if(substr(out_dir,dir_len,dir_len) == "/"){
+    out_dir <- substr(out_dir,dir_len -1,dir_len -1)
+  }
   
   command <- paste (path," subset -i", productId,                    
                     "-x", lon[1], "-X", lon[2],                  
                     "-y", lat[1], "-Y", lat[2],
-                    "-t", date_min, "-T", delta,
+                    "-t", dates[1], "-T", dates[2],
                     "-z", depth[1], "-Z", depth[2],                    
-                    variable, "-o", out_dir, "-f", out_name, 
+                    "--variable", variable, "-o", out_dir, "-f", out_name, 
                     "--force-download")
   
-  cat(paste("======== Download starting on",date_min,"========"))
+  cat("======== Download starting ========\n")
   
-  cat(command)
+  cat(paste(command,"\n"))
   
   system(command, intern = TRUE)
+  
+  paste(out_dir,out_name,sep ="/")
 }
 
 cms_deinit<-function(){
