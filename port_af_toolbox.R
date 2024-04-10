@@ -1,25 +1,24 @@
 library(reticulate)
 
-cms_init<-function(){
+cmw_init<-function(){
   if(! "copernicus_data_retrieval" %in% reticulate::conda_list()$name){
     reticulate::conda_create(envname = "copernicus_data_retrieval",
                              packages = "copernicusmarine")
   }
-  cat("You'll have to login to retrieve data from Copernicus Marine.\nYou can allways login in later or change you login by calling cms_login().")
-  answer <- readline("Do you wish to login now?  [Y/n]")
-  if(answer %in% c("Y","y","")){
-    cms_login()
-  }
+  message("Note:You'll have to login to retrieve data from Copernicus Marine.")
 }
 
-cms_login<-function(username,password){
+cmw_login<-function(username,password){
   clist <- reticulate::conda_list()
+  if(! "copernicus_data_retrieval" %in% reticulate::conda_list()$name){
+    stop("cmw not initialized. Initialize it with cmw_init().")
+  }
   path<-clist$python[clist$name == "copernicus_data_retrieval"]
   path<-stringr::str_replace(path,".python","/copernicusmarine")
   system2(path,args = "login", input = c(username,password,"y"))
 }
 
-cms_subset<-function(
+cmw_subset<-function(
     serviceId,
     productId,
     variable,
@@ -27,17 +26,12 @@ cms_subset<-function(
     lon = c(-110,-45),
     lat = c(55,80),
     depth,
-    out_name = tempfile(tmpdir = "",fileext = ".nc"),
+    out_name = paste(c("cmw_file_",sample(c(letters,1:10),20,TRUE),".nc"),collapse =""),
     out_dir = getwd())
 {
   clist <- reticulate::conda_list()
   if(! "copernicus_data_retrieval" %in% reticulate::conda_list()$name){
-    answer <- readline("cms not initialized. Do you wish to initialize it? [Y/n]")
-    if(answer %in% c("Y","y","")){
-      cms_init()
-    } else {
-      return()
-    }
+    stop("cmw not initialized. Initialize it with cmw_init().")
   }
   path<-clist$python[clist$name == "copernicus_data_retrieval"]
   path<-stringr::str_replace(path,".python","/copernicusmarine")
@@ -51,12 +45,14 @@ cms_subset<-function(
     out_dir <- substr(out_dir,dir_len -1,dir_len -1)
   }
   
+  tmp_name <- paste(c("cmw_tmp_",sample(c(letters,1:10),20,TRUE),".nc"),collapse ="")
+  
   command <- paste (path," subset -i", productId,                    
                     "-x", lon[1], "-X", lon[2],                  
                     "-y", lat[1], "-Y", lat[2],
                     "-t", dates[1], "-T", dates[2],
                     "-z", depth[1], "-Z", depth[2],                    
-                    "--variable", variable, "-o", out_dir, "-f", out_name, 
+                    "--variable", variable, "-o", out_dir, "-f", tmp_name, 
                     "--force-download")
   
   cat("======== Download starting ========\n")
@@ -65,9 +61,32 @@ cms_subset<-function(
   
   system(command, intern = TRUE)
   
-  paste(out_dir,out_name,sep ="/")
+  cat("Cleaning up \n")
+  
+  full_file_name <- paste(out_dir,out_name,sep ="/")
+  
+  if(file.exists(full_file_name)){
+    file.remove(full_file_name)
+  }
+  
+  file.rename(paste(out_dir,tmp_name,sep = "/"),full_file_name)
+  
+  return(full_file_name)
+  
 }
 
-cms_deinit<-function(){
+cmw <- function(...){
+  clist <- reticulate::conda_list()
+  if(! "copernicus_data_retrieval" %in% reticulate::conda_list()$name){
+    stop("cmw not initialized. Initialize it with cmw_init().")
+  }
+  path<-clist$python[clist$name == "copernicus_data_retrieval"]
+  path<-stringr::str_replace(path,".python","/copernicusmarine")
+  system(paste(path,...))
+}
+
+cmw()
+
+cmw_deinit<-function(){
   reticulate::conda_remove("copernicus_data_retrieval")
 }
