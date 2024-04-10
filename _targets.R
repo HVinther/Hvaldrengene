@@ -1,27 +1,22 @@
+# Loads packages needed for defining pipeline
 library(targets)
 library(tarchetypes)
 library(tidyverse)
 library(crew)
-# This is an example _targets.R file. Every
-# {targets} pipeline needs one.
-# Use tar_script() to create _targets.R and tar_edit()
-# to open it again for editing.
-# Then, run tar_make() to run the pipeline
-# and tar_read(data_summary) to view the results.
 
-# Define custom functions and other global objects.
-# This is where you write source(\"R/functions.R\")
-# if you keep your functions in external scripts.
-
-# Set target-specific options such as packages:
+# Set target-specific options such as packages and parallelization
 tar_option_set(
   packages = c("reticulate","purrr"),
   controller = crew_controller_local(workers = 4)) # nolint
 
-source("R/cmw.R")
+# Loads all custom functions
+list.files("R",full.names = T) %>%
+  purrr::map(source)
 
+# Defines a tibble to map over
 var_frame <- tibble(year = 2000+c(1:2))
 
+# Creates a target for each year
 tar_fetch_data_from_cm<-tar_map(
   values = var_frame,
   tar_target(name = SST,
@@ -45,7 +40,9 @@ tar_fetch_data_from_cm<-tar_map(
   )
 )
 
-# End this file with a list of target objects.
+# The list of instructions to build 
+# Run using targets::tar_make() - note only builds changed parts and their descendants
+# Show dependency graph using targets::tar_visnetwork()
 list(
   tar_fetch_data_from_cm
 )
