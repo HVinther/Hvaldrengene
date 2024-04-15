@@ -40,8 +40,17 @@ list(
                repository = "local"
     )
   ),
+  # Create list of paths to SST rasters
+  tar_target(SSTpaths,list(SST_2001,SST_2002,SST_2003,SST_2004,SST_2005,SST_2006,SST_2007,SST_2008,SST_2009,SST_2010,SST_2011,SST_2017,SST_2018,SST_2019)),
+  # Create list of paths to ZOOC rasters
+  tar_target(ZOOCpaths,list(ZOOC_2001,ZOOC_2002,ZOOC_2003,ZOOC_2004,ZOOC_2005,ZOOC_2006,ZOOC_2007,ZOOC_2008,ZOOC_2009,ZOOC_2010,ZOOC_2011,ZOOC_2017,ZOOC_2018,ZOOC_2019)),
   # create date vector from rasters
-  tar_target(Z, 
-             makeZ(list(SST_2001,SST_2002,SST_2003,SST_2004,SST_2005,SST_2006,SST_2007,SST_2008,SST_2009,SST_2010,SST_2011,SST_2017,SST_2018,SST_2019)))
+  tar_target(Z,makeZ(SSTpaths)),
+  # 
+  tar_target(Swimspeedfiltered, read.csv("SwimSpeedFitleredWhaleData.txt")),
+  #
+  tar_target(SSTs,
+              addCov(Data = Swimspeedfiltered,
+                     raster = raster::stack(SSTpaths),
+                     Z = Z))
 )
-

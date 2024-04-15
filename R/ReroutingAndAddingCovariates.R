@@ -12,7 +12,6 @@ getcoord<-function(imp){
   return(out)
 }
 
-imputed_paths<-lapply(imputed_paths,getcoord)
 
 ##subfunction for adding covariate from raster at each obs
 getCov<-function(Data,raster,Z, printFlag = TRUE){
