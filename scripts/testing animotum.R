@@ -4,6 +4,7 @@ library(rnaturalearth)
 library(rnaturalearthdata)
 library(plotly)
 library(R.utils)
+library(bernr)
 #Notes
 #Very few tracks cannot be simulated from. These individualtracks are:
 #i=160 ("22854_10-37"),i=163 ("24638_10-15"),i=220 ("37228_10-56"),
@@ -121,6 +122,8 @@ plot_sim<-function(simu=sim,whale=sub_whales,id="170753-13",scale_x=c(0,0),scale
     geom_path(data=for_plot_gps[which(for_plot_gps$rep==0),],mapping=aes(x=lon,y=lat),color="black")+
     geom_point(data=points,mapping=aes(x=lon,y=lat),color="blue",size=1)+theme(legend.position = "none")
 }
+
+
 p1<-plot_sim(scale_y=c(-0.1,0.1))+ggtitle("170753-13",subtitle="simulated")
 p1
 p2<-plot_sim(id="37230FB_03-7",scale_x=c(-0.5,0.5))+ggtitle("37230FB_03-7",subtitle="simulated")
@@ -131,11 +134,9 @@ df <- data.frame(
   y = runif(10),
   rep = as.factor(1:10))
 plot_for_legend <- ggplot(df, aes(x, y, color = rep)) + geom_line()
-plot_for_legend
-# Extract the legend
 legend<-get_legend(plot_for_legend)
 
-grid.arrange(p1,p2,legend,widths = c(2, 2, 0.5),nrow=1,top=textGrob("Illustration of simulation"))
+grid.arrange(p1,p2,legend,widths = c(2, 2, 0.5),nrow=1)
 
 ## Turning it into a sim_fit object for the rerouting
 sim_fit<-sim_fit(ssm[-error_index,])
@@ -198,13 +199,17 @@ countries <- ne_countries(scale = 50, type = "countries", returnclass = "sf")
 
 
 gen_html<-function(plot_data=plot_straight,whale=sub_whales){
-  gg<-ggplot()+
+  if (!("date" %in% names(whale)) || !("id" %in% names(whale))) {
+    stop("The 'whale' dataframe must contain 'date' and 'id' columns.")
+  }
+  
+  whale<-whale[-which(whale$id%in%ssm$id[error_index]),]
+  gg<-ggplot(whale)+
     geom_sf(data=countries,fill="gray")+coord_sf(xlim=range(plot_data$lon),ylim=range(plot_data$lat))+
     geom_path(plot_data[which(plot_data$rep!=0),],mapping=aes(x=lon,y=lat,color=rep,group=id))+
     geom_path(plot_data[which(plot_data$rep==0),],mapping=aes(x=lon,y=lat,group=id),color="black")+
-    geom_point(sub_whales[-which(sub_whales$id%in%ssm$id[error_index]),],mapping=aes(x=lon,y=lat),color="blue",size=0.5)
-  
-  p<-ggplotly(gg)  
+    geom_point(whale,mapping=aes(x=lon,y=lat,text=paste("ID:", id, "<br>Date:", date)),color="blue",size=1)
+  p<-ggplotly(gg,tooltip = "text")  
 }
 
 html1<-gen_html()
@@ -272,6 +277,9 @@ positions0 <- select(positions0, id, date, lon, lat)
 mpm0_data<-merge(mpm0_data,positions0,by=c("id","date"),all.x=TRUE)
 
 ## Some of these have very high standard errors on the logit scale, and so far I dont consider these
+## It is 47 tracks with a total length of 553 so on average 11 data points each.
+length(mpm0_data[which(mpm0_data$logit_g.se>1000),]$id)
+
 
 mpm0_data<-filter(mpm0_data,logit_g.se<1000)
 mpm0_data$SST<-addCov(mpm0_data,SST,type="extract")
@@ -279,6 +287,11 @@ mpm0_data$ZOOC<-addCov(mpm0_data,ZOOC,type="extract")
 mpm0_data$SST_grad<-addCov(mpm0_data,SST,type="gradient")
 mpm0_data$SST_dist<-addCov(mpm0_data,SST,type="contourDist")
 mpm0_data$SSTgrad<-sqrt(mpm0_data$SST_grad[,1]^2+mpm0_data$SST_grad[,2]^2)
+mpm0_data[which(is.na(mpm0_data$SST)),]$SST<-getCovAlt(mpm0_data[which(is.na(mpm0_data$SST)),],SST)
+mpm0_data[which(is.na(mpm0_data$ZOOC)),]$ZOOC<-getCovAlt(mpm0_data[which(is.na(mpm0_data$ZOOC)),],ZOOC)
+
+
+
 
 saveRDS(mpm0_data,file="mpm_data_test")
 
@@ -297,13 +310,26 @@ p <- ggplot(mpm0_data, aes(x = logit_g)) +
 print(p)
 
 ## So it is not completely unreasonable to use a normal linear model
-## We also omit NA variables, which might be done differently
 
-mpm_mod<-lm(logit_g~ns(SST,df=3)+SSTgrad+ns(ZOOC,df=3)+ns(SST_dist,df=2),data=mpm0_data)
+
+mpm_mod<-lm(logit_g~ns(SST,df=3)+ns(ZOOC,df=3)+ns(SST_dist,df=2),data=mpm0_data)
 summary(mpm_mod)
+
+mpm_mod_mixed<-lmer(logit_g~ns(SST,df=3)+ns(ZOOC,df=4)+ns(SST_dist,df=2),data=mpm0_data,REML=TRUE)
+mpm_mod_mixed_nlme <- lme(fixed = logit_g ~ ns(SST, df=3) + ns(ZOOC, df=3) + ns(SST_dist, df=2), 
+                          random = ~ 1 | id_old,
+                          #correlation=corAR1(form=~date,fixed=TRUE),
+                          data = mpm0_data, 
+                          method = "REML")
+
+summary(mpm_mod)
+
 # SSTgrad is not really significant
 # Do we want to include distance to coast?
 # I feel like salinity would be fun as well
+
+model<-mpm_mod_mixed
+var
 
 plot_model <- function(model=mpm_mod, data=mpm0_data, var = "SST") {
   if (!var %in% names(data)) {
@@ -313,25 +339,33 @@ plot_model <- function(model=mpm_mod, data=mpm0_data, var = "SST") {
   plot_linear_dat_list <- list()
   
   # Loop through each variable in the data
-  for (col_name in names(data)) {
-    if (col_name == var) {
-      # If it's the variable of interest, create a sequence
-      plot_linear_dat_list[[col_name]] <- seq(min(na.omit(data[[col_name]])), max(na.omit(data[[col_name]])), length = 100)
-    } else if (class(data[[col_name]])[1] != "numeric") {
-      next
-    } else {
-      # Otherwise, calculate the mean of the column, omitting NA values
-      plot_linear_dat_list[[col_name]] <- mean(na.omit(data[[col_name]]))
+  
+    for (col_name in names(data)) {
+      if (col_name == var) {
+        # If it's the variable of interest, create a sequence
+        plot_linear_dat_list[[col_name]] <- seq(min(na.omit(data[[col_name]])), max(na.omit(data[[col_name]])), length = 100)
+      } else if (class(data[[col_name]])[1] != "numeric")
+        {next} 
+      else {
+        # Otherwise, calculate the mean of the column, omitting NA values
+        plot_linear_dat_list[[col_name]] <- mean(na.omit(data[[col_name]]))
+      }
     }
-  }
+  
+
   
   # Convert the list to a data frame
   plot_linear_dat <- as.data.frame(plot_linear_dat_list)
   
-  preds <- predict(model, newdata = plot_linear_dat, se.fit = TRUE)
-  plot_linear_dat$logit_g <- preds$fit
-  plot_linear_dat$lower_ci <- preds$fit - 1.96 * preds$se.fit
-  plot_linear_dat$upper_ci <- preds$fit + 1.96 * preds$se.fit
+  # preds <- predict(model, newdata = plot_linear_dat, se.fit = TRUE,re.form=NA)
+  # plot_linear_dat$logit_g <- preds$fit
+  # plot_linear_dat$lower_ci <- preds$fit - 1.96 * preds$se.fit #This ought to be a prediction interval tho?
+  # plot_linear_dat$upper_ci <- preds$fit + 1.96 * preds$se.fit
+  
+  preds<-bolker_ci(mpm_mod_mixed_nlme,plot_linear_dat) #Using design matrix is not sensible
+  # since we are just taking the average and this somehow messes with the design matrix
+
+  
   
   # Convert string to symbol for ggplot
   var_sym <- sym(var)
@@ -341,4 +375,14 @@ plot_model <- function(model=mpm_mod, data=mpm0_data, var = "SST") {
     geom_line(color = "black")
 }
 
-plot_model(var="SST")
+model<-mpm_mod_mixed_nlme
+
+plot_model(model=mpm_mod_mixed,var="SST_dist")
+
+
+## Temporary conclusion is that the linear model gives the nicest interpretation,
+## while the mixed effects is obviously better fitted. In nlme we can adjust
+## for autocorrelation, but cannot easily make confidence intervals. lmer4 easily makes
+## confidence intervals but autocorrelation is harder
+
+
