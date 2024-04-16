@@ -1,10 +1,20 @@
-makeZ<-function(file_list){
-  file_list %>%
+makeZ<-function(file_list,file_list2){
+  Z<-file_list %>%
     purrr::map(raster::brick) %>%
     purrr::map(raster::getZ) %>%
     do.call(c,.)
+  
+  Z2 <-file_list2 %>%
+    purrr::map(raster::brick) %>%
+    purrr::map(raster::getZ) %>%
+    do.call(c,.)
+  
+  if(any(Z != Z2)){
+      stop("Date-vector differes between provided covariates!")
+    }
+  return(Z)
 }
- 
+
 make_stack <- function(
     file_list,
     out_name = paste(c("covariate_stack_",sample(c(letters,1:10),20,TRUE),".nc"),collapse =""),
