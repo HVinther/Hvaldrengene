@@ -1,3 +1,14 @@
+## 
+
+make_barrier <- function(){
+  world<-map_data("world", region = c("Canada","Greenland"))
+  temp<-st_as_sf(world, coords = c("long","lat"))%>%sf::st_set_crs(4326)%>%sf::st_transform(crs = 3574) %>% st_coordinates()
+  world[,c("x","y")]= temp
+  sfworld<-sfc_polygon(world, x=7, y=8, polygon_id = 3)
+  sfworld<-sfworld%>%sf::st_set_crs(3574)
+  sfworld
+}
+
 ##
 getcoord<-function(imp){
   coord = imp %>% 
