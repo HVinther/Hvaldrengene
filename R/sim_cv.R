@@ -1,15 +1,11 @@
-library(aniMotum)
-library(tidyverse)
-
-# Vi indlæser sub_whales på samme måde som i analysen
-
-whales<-read.csv("SwimSpeedFitleredWhaleData.txt") #Might have been moved to the Data folder
-
-sub_whales<-function(whale_data){
+pre_sim_cv<-function(whale_data,k = 30){
   out<-whale_data
   names(out)[names(out) == "time"] <- "date"
   names(out)[names(out) == "ID"] <- "id"
   out<-out[,c(1:4,7)]
+  out <-out %>%
+    group_by(id) %>%
+    filter(n() > k)
   out$id_old = extract_prefix(out$id)
   out
 }
@@ -67,9 +63,6 @@ sim_cv<-function(data_set, ids, k = "loo"){
     })
   do.call(rbind,out) # bind tibbles from different ids
 }
-
-out<-sim_cv(sub_whales(whales),ids = c("37280FB_03-2","170753-35"),k = 10)
-out
 
 ## Calculates mean square distance between two dataframes of coordinate pairs
 msdistance<-function(obs,pred){

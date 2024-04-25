@@ -13,7 +13,13 @@ tar_option_set(
   controller = crew_controller_local(workers = 10)) # nolint
 
 # Loads all custom functions
-list.files("R",full.names = T) %>%
+# list.files("R",full.names = T) %>%
+#   purrr::map(source)
+
+paste("R",c("cmw.R",
+  "animotum_functions.R",
+  "sim_cv.R",
+  "rasters_to_stack.R"),sep ="/") %>%
   purrr::map(source)
 
 # procedure
@@ -56,18 +62,19 @@ list(
   # Extract the swimspeed filtered data
   tar_target(whales, read.csv("SwimSpeedFitleredWhaleData.txt")),
   
+  tar_target(name = sw,pre_sim_cv(whales,k = 30)),
+  
+  tar_target(ids, unique(sw$id)),
+
+  tar_target(name = cv,
+               command = sim_cv(data_set = sw,
+                                ids = ids,
+                                k = 20),
+             pattern = map(ids)),
+
   # fit state space model
   tar_target(ssm,ani_analysis_fit_ssm(whales)),
-  
-  # identify tracks for which simulations cannot be made
-  tar_target(error_index,ani_analysis_find_error_index(ssm)),
-  
-  # simulating tracks from state space model for track for which simulation is possible
-  tar_target(sim,sim_post(ssm[-error_index,],reps=10)),
-  
-  # preparation for rerouting
-  tar_target(sim_fit,ani_analysis_sim_post_to_sim_fit(
-    state_space_model = ssm,
-    sim_post = sim,
-    error_index = error_index))
+  # simulating from ssm ready for reroute
+  tar_target(sim_fit,ani_sim(ssm = ssm,
+                             reps = 10))
 )

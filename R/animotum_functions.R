@@ -149,3 +149,12 @@ ani_analysis_sim_post_to_sim_fit<-function(state_space_model,sim_post,error_inde
   return(sim_fit)
 }
 
+ani_sim<-function(ssm,reps){
+  error_index = ani_analysis_find_error_index(ssm) # identify tracks for which simulations cannot be made
+  sim = sim_post(ssm[-error_index,],reps = reps) # simulating tracks from state space model for track for which simulation is possible
+  sim_fit = ani_analysis_sim_post_to_sim_fit(
+    state_space_model = ssm,
+    sim_post = sim,
+    error_index = error_index) # preparation for rerouting
+  return(sim_fit)
+}
