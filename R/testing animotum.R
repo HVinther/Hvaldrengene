@@ -5,6 +5,12 @@ library(rnaturalearthdata)
 library(plotly)
 library(R.utils)
 library(bernr)
+library(mgcv)
+library(splines2)
+library(nlme)
+library(lme4)
+library(gamm4)
+library(gridExtra)
 #Notes
 #Very few tracks cannot be simulated from. These individualtracks are:
 #i=160 ("22854_10-37"),i=163 ("24638_10-15"),i=220 ("37228_10-56"),
@@ -76,6 +82,16 @@ grid.arrange(p1,p2,nrow=1)
 
 temp<-ssm_plot_data[which(ssm_plot_data$id_old=="37230FB_03"),]
 ggplot(temp[which(temp$id=="37230FB_03-7"),])+geom_point(mapping=aes(x=lon,y=lat))
+
+
+#Figuring out how to make predictions
+
+n<-1000
+group<-sample(1:5,size=n)
+ssm_pred<-fit_ssm(sub_whales[1:1000,],vmax=5,time.step=2,model="crw")
+
+grab(ssm_pred,)
+
 
 #For finding the error-prone tracks
 
@@ -295,7 +311,10 @@ mpm0_data[which(is.na(mpm0_data$ZOOC)),]$ZOOC<-getCovAlt(mpm0_data[which(is.na(m
 
 saveRDS(mpm0_data,file="mpm_data_test")
 
-ggplot(mpm0_data)+geom_point(mapping=aes(x=SSTgrad,y=logit_g))
+mpm0_data<-readRDS("rds/mpm_data_test")
+View(mpm0_data)
+
+ggplot(mpm0_data)+geom_point(mapping=aes(x=SST_grad,y=logit_g))
 
 #linear model
 
@@ -315,7 +334,7 @@ print(p)
 mpm_mod<-lm(logit_g~ns(SST,df=3)+ns(ZOOC,df=3)+ns(SST_dist,df=2),data=mpm0_data)
 summary(mpm_mod)
 
-mpm_mod_mixed<-lmer(logit_g~ns(SST,df=3)+ns(ZOOC,df=4)+ns(SST_dist,df=2),data=mpm0_data,REML=TRUE)
+mpm_mod_mixed<-lmer(logit_g~ns(SST,df=3)+ns(ZOOC,df=4)+ns(SST_dist,df=2)+(1|id),data=mpm0_data,REML=TRUE)
 mpm_mod_mixed_nlme <- lme(fixed = logit_g ~ ns(SST, df=3) + ns(ZOOC, df=3) + ns(SST_dist, df=2), 
                           random = ~ 1 | id_old,
                           #correlation=corAR1(form=~date,fixed=TRUE),
@@ -352,32 +371,65 @@ plot_model <- function(model=mpm_mod, data=mpm0_data, var = "SST") {
       }
     }
   
-
-  
   # Convert the list to a data frame
   plot_linear_dat <- as.data.frame(plot_linear_dat_list)
   
-  # preds <- predict(model, newdata = plot_linear_dat, se.fit = TRUE,re.form=NA)
-  # plot_linear_dat$logit_g <- preds$fit
-  # plot_linear_dat$lower_ci <- preds$fit - 1.96 * preds$se.fit #This ought to be a prediction interval tho?
-  # plot_linear_dat$upper_ci <- preds$fit + 1.96 * preds$se.fit
-  
-  preds<-bolker_ci(mpm_mod_mixed_nlme,plot_linear_dat) #Using design matrix is not sensible
-  # since we are just taking the average and this somehow messes with the design matrix
+   preds <- predict(model, newdata = plot_linear_dat, se.fit = TRUE,re.form=NA)
+   plot_linear_dat$logit_g <- preds$fit
+   plot_linear_dat$lower_ci <- preds$fit - 1.96 * preds$se.fit #This ought to be a prediction interval tho?
+   plot_linear_dat$upper_ci <- preds$fit + 1.96 * preds$se.fit
 
-  
   
   # Convert string to symbol for ggplot
   var_sym <- sym(var)
   
   ggplot(plot_linear_dat, aes(x = !!var_sym, y = logit_g)) +
     geom_ribbon(aes(ymin = lower_ci, ymax = upper_ci), fill = "gray50") +
-    geom_line(color = "black")
+    geom_line(color = "black")+ggtitle(paste("plot of ",var),subtitle=as.character(class(model)[1]))
 }
 
-model<-mpm_mod_mixed_nlme
+model<-mpm_mod_mixed
 
-plot_model(model=mpm_mod_mixed,var="SST_dist")
+
+plot_model(model=gam_mod_mixed[[2]],var="ZOOC")
+
+class(gam_mod_mixed[[2]])
+
+#Fitting a GAM
+
+gam_mod<-gam(logit_g~s(SST)+s(ZOOC)+s(SST_dist),data=mpm0_data)
+
+gam_mod_mixed<-gamm4(logit_g~s(SST)+s(ZOOC)+s(SST_dist),random=~(1|id),data=mpm0_data)
+
+class(gam_mod_mixed)
+plot(gam_mod,pages=1)
+
+
+models <- list(mpm_mod=mpm_mod, mpm_mod_mixed=mpm_mod_mixed, 
+               gam_mod=gam_mod, gam_mod_mixed=gam_mod_mixed[[2]])
+variables <- c("SST", "ZOOC")
+
+# Create a list to store the plots
+plots_sst <- list()
+plots_zooc <- list()
+
+# Generate plots for each combination of model and variable
+for (model_name in names(models)) {
+  for (variable in variables) {
+    # Check the variable and store the plot in the corresponding list
+    if (variable == "SST") {
+      plots_sst[[model_name]] <- plot_model(model=models[[model_name]], var=variable)
+    } else if (variable == "ZOOC") {
+      plots_zooc[[model_name]] <- plot_model(model=models[[model_name]], var=variable)
+    }
+  }
+}
+
+# Combine the SST plots into a 2x2 grid
+grid_arrange_sst <- grid.arrange(grobs=plots_sst, ncol=2, nrow=2)
+
+# Combine the ZOOC plots into a 2x2 grid
+grid_arrange_zooc <- grid.arrange(grobs=plots_zooc, ncol=2, nrow=2)
 
 
 ## Temporary conclusion is that the linear model gives the nicest interpretation,

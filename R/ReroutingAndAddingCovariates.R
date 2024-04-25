@@ -1,15 +1,34 @@
-## 
+library(raster)
+library(tidyverse)
+library(sf)
+library(ncdf4)
+library(ctmcmove)
+library(sfheaders)
+library(sfnetworks)
+library(pathroutr)
+library(reshape2)
 
-make_barrier <- function(){
-  world<-map_data("world", region = c("Canada","Greenland"))
-  temp<-st_as_sf(world, coords = c("long","lat"))%>%sf::st_set_crs(4326)%>%sf::st_transform(crs = 3574) %>% st_coordinates()
-  world[,c("x","y")]= temp
-  sfworld<-sfc_polygon(world, x=7, y=8, polygon_id = 3)
-  sfworld<-sfworld%>%sf::st_set_crs(3574)
-  sfworld
+load("~/Downloads/imp_list.Rdata")
+setwd("~/Tresors/Dokumenter/Hvalprojekt")
+SST<-stack('Data/SST_stack.nc')
+ZOOC<-stack("Data/ZOOC_stack.nc")
+gebco<-raster("Data/gebco_2022_n80.0_s50.0_w-110.0_e-45.0.nc",varname = "elevation")
+Z<-readRDS("Data/Z.rds")
+
+imputed_paths<-list()
+for(i in 0:10){
+  imputed_paths[[i+1]]<-read.csv(paste0("imputed_paths/imputed_paths_",i,".csv"))
 }
 
-##
+for(i in 1:length(imputed_paths)){
+  imputed_paths[[i]]$date <- imputed_paths[[i]]$date |> as.POSIXct()  
+  imputed_paths[[i]]$id <- imputed_paths[[i]]$id |> as.factor()
+  imputed_paths[[i]]$id_old<- imputed_paths[[i]]$id_old |> as.factor()
+}
+
+imputed_paths<-lapply(imputed_paths, function(x){filter(x, locType == "p")[,-4]})
+imputed_paths[[2]]$x-imputed_paths[[3]]$x
+
 getcoord<-function(imp){
   coord = imp %>% 
     sf::st_as_sf(coords = c("x","y"), crs = 3574) %>% 
@@ -23,9 +42,10 @@ getcoord<-function(imp){
   return(out)
 }
 
+imputed_paths<-lapply(imputed_paths,getcoord)
 
 ##subfunction for adding covariate from raster at each obs
-getCov<-function(Data,raster,Z, printFlag = TRUE){
+getCov<-function(Data,raster, printFlag = TRUE){
   nlayers<-nlayers(raster)
   Ncol<-raster::ncol(raster)
   Nrow<-raster::nrow(raster)
@@ -46,7 +66,7 @@ getCov<-function(Data,raster,Z, printFlag = TRUE){
 }
 
 ##subfunction for calculating distance to contour of a given level at each obs
-distanceToContour<-function(Data,raster,Z, Level, printFlag = TRUE){
+distanceToContour<-function(Data,raster, Level, printFlag = TRUE){
   nlayers<-nlayers(raster)
   if(nlayers == 1){
     spl<-rasterToContour(raster, levels = Level)
@@ -73,7 +93,7 @@ distanceToContour<-function(Data,raster,Z, Level, printFlag = TRUE){
 }
 
 ##subfunction for calculating covariate gradients at each obs
-getGrad<-function(Data,raster,Z, printFlag = TRUE){
+getGrad<-function(Data,raster, printFlag = TRUE){
   nlayers<-nlayers(raster)
   if(nlayers == 1){
     grad<-ctmcmove::rast.grad(raster)
@@ -100,15 +120,15 @@ getGrad<-function(Data,raster,Z, printFlag = TRUE){
 }
 
 ##main function for adding covariate of desired type
-addCov<-function(Data, raster, type = "extract",Z, Level = 0, printFlag = TRUE){
+addCov<-function(Data, raster, type = "extract", Level = 0, printFlag = TRUE){
   if(type == "extract"){
-    return(getCov(Data,raster,Z, printFlag))
+    return(getCov(Data,raster, printFlag))
   }
   if(type == "contourDist"){
-    return(distanceToContour(Data,raster,Z,Level, printFlag))
+    return(distanceToContour(Data,raster,Level, printFlag))
   }
   if(type == "gradient"){
-    return(getGrad(Data,raster,Z,printFlag))
+    return(getGrad(Data,raster, printFlag))
   }
   print(paste("no method for",type, "since", type, "not extract, contourDist nor gradient."))
 }
@@ -131,8 +151,16 @@ try_reroute<-function(Data,barrier,vis_graph){
   return(data.frame(updated_data)[,names])
 }
 
+##creation of barrier and vis_graph for pathrouting
+world<-map_data("world", region = c("Canada","Greenland"))
+temp<-st_as_sf(world, coords = c("long","lat"))%>%sf::st_set_crs(4326)%>%sf::st_transform(crs = 3574) %>% st_coordinates()
+world[,c("x","y")]= temp
+sfworld<-sfc_polygon(world, x=7, y=8, polygon_id = 3)
+sfworld<-sfworld%>%sf::st_set_crs(3574)
+vis_graph<-pathroutr::prt_visgraph(sfworld)
+
 ## function for estimating covariates in NA-cells
-getCovAlt<-function(Data,raster,Z, printFlag = TRUE){
+getCovAlt<-function(Data,raster, printFlag = TRUE){
   nlayers<-nlayers(raster)
   Ncol<-raster::ncol(raster)
   Nrow<-raster::nrow(raster)
@@ -169,3 +197,69 @@ getCovAlt<-function(Data,raster,Z, printFlag = TRUE){
   }
   return(cov)
 }
+
+## rerouting paths
+rr_list<-list()
+
+# for(i in 1:length(imputed_paths)){
+#   message(paste("beginning",i))
+#   rr_list[[i]]<-try_reroute(Data = imputed_paths[[i]], barrier = sfworld, vis_graph = vis_graph)
+# }
+
+
+
+rr_list<-parallel::mclapply(imputed_paths, 
+                    function(imp){try_reroute(Data = imp, barrier = sfworld,vis_graph = vis_graph)},
+                    mc.cores = max(parallel::detectCores()-1,1))
+
+
+## listing covariates to add
+CovariateList<-list("SST"=list(SST,"extract",0),
+                    "SSTgrad"=list(SST,"gradient",0),
+                    "ZOOC"=list(ZOOC,"extract",0))
+
+## adding covariates
+data_list<-list()
+for(j in 1:length(rr_list)){
+  data_temp<-rr_list[[j]]
+  for(i in 1:length(CovariateList)){
+    print(names(CovariateList)[i])
+    list<-CovariateList[[i]]
+    data_temp[,names(CovariateList)[i]]=addCov(Data = data_temp,raster = list[[1]],type =list[[2]],Level = list[[3]])
+  }
+  data_list[[j]]<-data_temp
+}
+
+
+## fixing gradient vector naming/structure
+temp_list<-data_list
+
+temp_list<-lapply(temp_list,
+       function(x){
+         cols<-data.frame("SSTgrad.lon" = x$SSTgrad[,1],"SSTgrad.lat" = x$SSTgrad[,2])
+         df<-dplyr::select(x,-SSTgrad)
+         out<-dplyr::bind_cols(df,cols)
+         return(out)
+})
+
+## calculating angle and norm
+temp_list<-lapply(temp_list, function(x){
+    df<-data.frame("SSTangle" = atan2(x$SSTgrad.lat,x$SSTgrad.lon),
+    "SSTnorm "= sqrt(x$SSTgrad.lat^2+x$SSTgrad.lon^2))
+    dplyr::bind_cols(x,df)
+  })
+
+
+## Estimating values for NA-observations
+for(i in 1:length(temp_list)){
+    message(i)
+    index_SST<-which(is.na(temp_list[[i]]$SST))
+    index_ZOOC<-which(is.na(temp_list[[i]]$ZOOC))
+    temp_list[[i]]$SST[index_SST]<-getCovAlt(temp_list[[i]][index_SST,],SST)
+    temp_list[[i]]$ZOOC[index_ZOOC]<-getCovAlt(temp_list[[i]][index_ZOOC,],ZOOC)
+}
+
+imp_list<-temp_list
+save(imp_list,file = "imp_list.Rdata")
+
+imp_list
