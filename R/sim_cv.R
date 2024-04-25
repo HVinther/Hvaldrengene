@@ -70,3 +70,19 @@ sim_cv<-function(data_set, ids, k = "loo"){
 
 out<-sim_cv(sub_whales(whales),ids = c("37280FB_03-2","170753-35"),k = 10)
 out
+
+## Calculates mean square distance between two dataframes of coordinate pairs
+msdistance<-function(obs,pred){
+  if(any(c(ncol(obs),ncol(pred))!= 2)){
+   stop("either the number of rows of  obs or pred does equal 2.") 
+  }
+  if(nrow(obs)!=nrow(pred)){
+    stop("obs and pred does not have same number of rows")
+  }
+  mean(
+    sf::st_distance(
+      sf::st_as_sf(obs, coords = names(obs)),
+      sf::st_as_sf(pred, coords = names(pred)),
+      by_element = TRUE)^2
+  )
+}
